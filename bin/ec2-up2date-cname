@@ -1,0 +1,137 @@
+#!/usr/bin/perl
+#
+# DO NOT USE YOUR OWN ACCESS/SECRET KEY. USE IAM AND RESTRICT PRIVS.
+#
+use strict;
+use LWP::UserAgent;
+use WebService::Amazon::Route53;
+
+#use Data::Dumper;
+
+my $ua = LWP::UserAgent->new;
+my $metadata_url = "http://169.254.169.254/latest";
+my $user_data = get_user_data();
+my ($access_key, $secret_key) = get_credential_keys($user_data);
+
+my $ttl = 60;
+my $name = get_name($user_data);
+my $public_hostname = get_public_hostname();
+my $zone_name = get_zone_name_from_name($name);
+
+my $response;
+my $r53 = WebService::Amazon::Route53->new(id  => $access_key,
+                                           key => $secret_key);
+
+# 与えられたホスト名からゾーン名(ドメイン名)を抜き出す
+my $zone = $r53->find_hosted_zone(name => $zone_name);
+
+if (!defined $zone || !$zone) {
+  print STDERR $r53->error->{message} . "\n";
+  die "failed to find zone $zone_name.";
+}
+
+print "FETCH $name CNAME $public_hostname\n";
+
+# まずは既存のCNAME RRを取得してみる(CNAMEなので1件しかない前提)
+my $record_sets = $r53->list_resource_record_sets(
+  zone_id   => $zone->{id},
+  name      => $name,
+  type      => 'CNAME',
+  max_items => 1,
+);
+
+# 既存のRRがなく、エラーも起きてなければ新規作成する
+if (!@$record_sets) {
+  if (scalar (keys %{$r53->error}) == 0) {
+    print "CREATE $name CNAME $public_hostname\n";
+    $response = $r53->change_resource_record_sets(
+      zone_id => $zone->{id},
+      action  => 'create',
+      name    => $name,
+      type    => 'CNAME',
+      ttl     => $ttl,
+      value   => $public_hostname,
+    );
+    if (!defined $response) {
+      print STDERR $r53->error->{message} . "\n";
+      die "failed to CREATE $name CNAME $public_hostname";
+    }
+  } else {
+    print STDERR $r53->error->{message} . "\n";
+    die "failed to LIST $name CNAME";
+  }
+} else {
+  print "UPDATE $name CNAME $public_hostname\n";
+  # 既存$record_setsをすべて削除
+  my $changes = [];
+  foreach my $record_set (@$record_sets) {
+    foreach my $val (@{$record_set->{records}}) {
+      my $set = {};
+      $set->{action} = 'delete';
+      $set->{name}   = $record_set->{name};
+      $set->{type}   = $record_set->{type};
+      $set->{ttl}    = $record_set->{ttl};
+      $set->{value}  = $val;
+      push(@$changes, $set);
+    }
+  }
+  push(@$changes, {
+    action  => 'create',
+    name    => $name,
+    type    => 'CNAME',
+    ttl     => $ttl,
+    value   => $public_hostname,
+  });
+  $response = $r53->change_resource_record_sets(
+    zone_id => $zone->{id},
+    changes => $changes
+  );
+  if (!defined $response) {
+    print STDERR $r53->error->{message} . "\n";
+    die "failed to update. $name CNAME $public_hostname";
+  }
+}
+
+print "$name CNAME $public_hostname successfully created/updated\n";
+
+sub get_user_data {
+  my $user_data = shift;
+  my $response = $ua->get($metadata_url . '/user-data');
+  if ($response->is_success) {
+    my @lines = split(/\n/, $response->decoded_content);
+    return \@lines;
+  } else {
+    die "failed to get user-data";
+  }
+}
+
+# return (access_key, secret_key)
+sub get_credential_keys {
+  my $user_data = shift;
+  return (${@$user_data}[1], ${@$user_data}[2]);
+}
+
+# return hostname points to public-hostname
+sub get_name {
+  my $user_data = shift;
+  return ${@$user_data}[0] . ".";
+}
+
+sub get_public_hostname {
+  my $response = $ua->get($metadata_url . '/meta-data/public-hostname');
+  if ($response->is_success) {
+    return $response->decoded_content;
+  } else {
+    die "failed to get public hostname";
+  }
+}
+
+# use domain name as zone name
+sub get_zone_name_from_name {
+  my $name = shift;
+  my ($hostname, $domain) = split(/\./, $name, 2);
+  if ($domain eq '') {
+    die "failed to get domain name from $name";
+  }
+  return $domain;
+}

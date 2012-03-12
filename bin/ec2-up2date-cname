@@ -54,16 +54,16 @@ if (!@$record_sets) {
   my $changes = [];
   foreach my $record_set (@$record_sets) {
     foreach my $val (@{$record_set->{'records'}}) {
-      push @$changes, get_record_set(
+      push @$changes, {get_record_set(
         action => 'delete',
         name   => $record_set->{'name'},
         type   => $record_set->{'type'},
         ttl    => $record_set->{'ttl'},
         value  => $val,
-      );
+      )};
     }
   }
-  push @$changes, get_record_set();
+  push @$changes, {get_record_set()};
 
   print "UPDATE $name CNAME $public_hostname\n";
   $response = $r53->change_resource_record_sets(
@@ -122,14 +122,14 @@ sub get_zone_name_from_name {
 
 sub get_record_set {
   my %args = @_;
-  return {
+  return (
     zone_id => $zone->{'id'},
     action  => $args{'action'} || 'create',
     name    => $args{'name'}   || $name,
     type    => $args{'type'}   || 'CNAME',
     ttl     => $args{'ttl'}    || $ttl,
     value   => $args{'value'}  || $public_hostname,
-  };
+  );
 }
 
 BEGIN {

@@ -49,3 +49,10 @@ EC2_SECRET_KEY from `user-data`_. user-data must be passed with following format
     ${EC2_SECRET_KEY}
 
 ``ec2-up2date-cname`` uses a domain name in ${HOSTNAME} as zone-name in route53.
+
+Lincense
+========
+
+Author: Ken-ichi TANABE <nabeken@tknetworks.org>
+
+This program is free software; you can redistribute it and/or modify it under the same terms as Perl itself.

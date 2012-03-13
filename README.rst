@@ -50,8 +50,8 @@ EC2_SECRET_KEY from `user-data`_. user-data must be passed with following format
 
 ``ec2-up2date-cname`` uses a domain name in ${HOSTNAME} as zone-name in route53.
 
-Lincense
-========
+License
+=======
 
 Author: Ken-ichi TANABE <nabeken@tknetworks.org>
 

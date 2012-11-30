@@ -31,15 +31,15 @@ if (!defined $zone || !$zone) {
 
 print "FETCH $name CNAME $public_hostname\n";
 
-my $record_sets = $r53->list_resource_record_sets(
+my $rr_sets = $r53->list_resource_record_sets(
   zone_id   => $zone->{'id'},
   name      => $name,
   type      => 'CNAME',
-  max_items => 1,
 );
+my @record_sets = grep { $_->{'name'} eq $name } @{$rr_sets};
 
 # create CNAME RR if there is no CNAME RR
-if (!@$record_sets) {
+if (!@record_sets) {
   if (scalar (keys %{$r53->error}) == 0) {
     print "CREATE $name CNAME $public_hostname\n";
     $response = $r53->change_resource_record_sets(get_record_set());
@@ -52,7 +52,7 @@ if (!@$record_sets) {
 } else {
   # delete all existing CNAME RR to update CNAME RR by new public-hostname
   my $changes = [];
-  foreach my $record_set (@$record_sets) {
+  foreach my $record_set (@record_sets) {
     foreach my $val (@{$record_set->{'records'}}) {
       push @$changes, {get_record_set(
         action => 'delete',
